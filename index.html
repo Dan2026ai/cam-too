@@ -600,6 +600,8 @@
 
 <script>
 const TAX_INSURANCE_RE = /tax|insur/i;
+// Fixed total property area (sq ft) used for every tenant's pro-rata share.
+const PROPERTY_AREA = 26449;
 const TENANT_COLORS = ['#1F5C4C','#B7621B','#4B5D6B','#2E6B3E','#7C5CBF','#A3402F','#1F6C8C','#8C6B1F','#6B4B8C','#3C7C6B','#8C4B4B','#4B6B8C','#6B8C4B','#8C4B6B','#4B8C7C'];
 
 let currentStep = 1;
@@ -872,9 +874,10 @@ function refreshTenantRow(tr, t){
 function renderAreaStrip(){
   const strip = document.getElementById('areaStrip');
   const legend = document.getElementById('areaLegend');
-  const vacant = parseFloat(document.getElementById('vacantArea')?.value) || 0;
+  const leased = tenants.filter(t => t.area > 0).reduce((s,t)=>s+t.area,0);
+  const vacant = Math.max(0, PROPERTY_AREA - leased);
   const active = tenants.filter(t => t.area > 0);
-  const total = active.reduce((s,t)=>s+t.area,0) + vacant;
+  const total = Math.max(PROPERTY_AREA, leased);
   if(total <= 0){
     strip.innerHTML = `<div class="strip-seg" style="width:100%;background:var(--line);"></div>`;
     legend.innerHTML = `<span>Enter leased areas below to see the plaza's area allocation.</span>`;
@@ -889,9 +892,11 @@ function renderAreaStrip(){
     segs += `<div class="strip-seg" style="width:${pct}%;background:var(--line);" title="Vacant: ${fmtPct(pct)}"></div>`;
   }
   strip.innerHTML = segs;
-  legend.innerHTML = active.map((t,i) => `
-    <span><span class="dot" style="background:${TENANT_COLORS[i % TENANT_COLORS.length]};"></span>${t.name || 'Tenant '+t.id} · ${fmtPct(t.area/total*100)}</span>
-  `).join('') + (vacant > 0 ? `<span><span class="dot" style="background:var(--line);"></span>Vacant · ${fmtPct(vacant/total*100)}</span>` : '');
+  const head = `<span style="flex-basis:100%;color:var(--ink);">Property area: <strong>${fmt(PROPERTY_AREA)} sq ft</strong> (fixed) · Leased in roster: ${fmt(leased)} sq ft</span>`
+    + (leased > PROPERTY_AREA ? `<span style="flex-basis:100%;color:var(--red);">Tenant areas add up to ${fmt(leased - PROPERTY_AREA)} sq ft more than the property area — check the roster.</span>` : '');
+  legend.innerHTML = head + active.map((t,i) => `
+    <span><span class="dot" style="background:${TENANT_COLORS[i % TENANT_COLORS.length]};"></span>${t.name || 'Tenant '+t.id} · ${fmtPct(t.area/PROPERTY_AREA*100)}</span>
+  `).join('') + (vacant > 0 ? `<span><span class="dot" style="background:var(--line);"></span>Vacant · ${fmtPct(vacant/PROPERTY_AREA*100)}</span>` : '');
 }
 
 document.getElementById('addExpenseBtn').addEventListener('click', () => {
@@ -1183,7 +1188,6 @@ let lastResults = null;
 
 document.getElementById('calcBtn').addEventListener('click', () => {
   const defaultAdminPct = parseFloat(document.getElementById('adminFeePct').value) || 0;
-  const vacantArea = parseFloat(document.getElementById('vacantArea').value) || 0;
   const monthsCovered = parseFloat(document.getElementById('monthsCovered').value) || 12;
 
   document.getElementById('periodLabel').textContent = `This reconciliation covers ${monthsCovered} month${monthsCovered==1?'':'s'}. Expense totals and estimated payments should both reflect that same period.`;
@@ -1192,7 +1196,7 @@ document.getElementById('calcBtn').addEventListener('click', () => {
   const adminFeeBase = expenses.filter(e=>!e.excluded).reduce((s,e)=>s+e.amount,0);
 
   const activeTenants = tenants.filter(t => t.area > 0);
-  const totalArea = activeTenants.reduce((s,t)=>s+t.area,0) + vacantArea;
+  const totalArea = PROPERTY_AREA;
 
   const rows = activeTenants.map(t => {
     const share = totalArea > 0 ? t.area/totalArea : 0;
